@@ -2,6 +2,7 @@ package pretty
 
 import (
 	"bytes"
+
 	"github.com/stretchr/testify/assert"
 )
 import "testing"

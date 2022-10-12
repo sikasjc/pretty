@@ -3,13 +3,15 @@ package pretty
 import (
 	"bytes"
 	"fmt"
-	"github.com/rogpeppe/go-internal/fmtsort"
 	"io"
 	"os"
 	"reflect"
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/fatih/color"
+	"github.com/rogpeppe/go-internal/fmtsort"
 )
 
 const (
@@ -24,7 +26,16 @@ var (
 )
 
 func init() {
+	defaultTheme := Theme{
+		Nil:     color.New(color.FgGreen),
+		Float:   color.New(color.FgMagenta),
+		Integer: color.New(color.FgYellow),
+		String:  color.New(color.FgCyan),
+		Bool:    color.New(color.FgRed),
+	}
+
 	defaultPrinter = &Printer{
+		Theme:       defaultTheme,
 		Indent:      defaultIndent,
 		NilString:   defaultNilString,
 		SortMapKey:  ASC,
@@ -44,6 +55,7 @@ type HandleUnsupportedType func(reflect.Value) string
 
 // Printer The context for printing
 type Printer struct {
+	Theme
 	// Indent indent string
 	Indent string
 	// NilString string for nil
@@ -225,7 +237,7 @@ func (p *Printer) printStruct(w io.Writer, val reflect.Value, level int) {
 // PrintValue recursively print the input value
 func (p *Printer) PrintValue(w io.Writer, val reflect.Value, level int) {
 	if !val.IsValid() {
-		WriteString(w, p.NilString)
+		p.writeNil(w)
 		return
 	}
 
@@ -236,10 +248,11 @@ func (p *Printer) PrintValue(w io.Writer, val reflect.Value, level int) {
 
 	switch val.Kind() {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		WriteString(w, strconv.FormatInt(val.Int(), 10))
+		p.writeInteger(w, val.Int())
+		_, _ = p.Integer.Fprint(w, strconv.FormatInt(val.Int(), 10))
 
 	case reflect.Uint, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		WriteString(w, strconv.FormatUint(val.Uint(), 10))
+		p.writeUInteger(w, val.Uint())
 
 	case reflect.Uint8: // byte
 		format := "%d"
@@ -249,13 +262,13 @@ func (p *Printer) PrintValue(w io.Writer, val reflect.Value, level int) {
 		WriteString(w, fmt.Sprintf(format, val.Uint()))
 
 	case reflect.Float32, reflect.Float64:
-		WriteString(w, strconv.FormatFloat(val.Float(), 'f', -1, 64))
+		p.writeFloat(w, val.Float())
 
 	case reflect.String:
-		WriteString(w, strconv.Quote(val.String()))
+		p.writeString(w, val.String())
 
 	case reflect.Bool:
-		WriteString(w, strconv.FormatBool(val.Bool()))
+		p.writeBool(w, val.Bool())
 
 	case reflect.Map:
 		p.printMap(w, val, level)
@@ -278,6 +291,30 @@ func (p *Printer) PrintValue(w io.Writer, val reflect.Value, level int) {
 		WriteString(w, "unsupported:")
 		WriteString(w, val.String())
 	}
+}
+
+func (p *Printer) writeNil(w io.Writer) {
+	_, _ = p.Nil.Fprint(w, p.NilString)
+}
+
+func (p *Printer) writeInteger(w io.Writer, val int64) {
+	_, _ = p.Integer.Fprint(w, strconv.FormatInt(val, 10))
+}
+
+func (p *Printer) writeUInteger(w io.Writer, val uint64) {
+	_, _ = p.Integer.Fprint(w, strconv.FormatUint(val, 10))
+}
+
+func (p *Printer) writeFloat(w io.Writer, val float64) {
+	_, _ = p.Float.Fprint(w, strconv.FormatFloat(val, 'f', -1, 64))
+}
+
+func (p *Printer) writeString(w io.Writer, val string) {
+	_, _ = p.String.Fprint(w, strconv.Quote(val))
+}
+
+func (p *Printer) writeBool(w io.Writer, val bool) {
+	_, _ = p.Bool.Fprint(w, strconv.FormatBool(val))
 }
 
 func IsPrimitive(val reflect.Value) bool {
