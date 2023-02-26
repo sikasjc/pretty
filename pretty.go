@@ -3,15 +3,14 @@ package pretty
 import (
 	"bytes"
 	"fmt"
+	"github.com/rogpeppe/go-internal/fmtsort"
 	"io"
 	"os"
 	"reflect"
 	"sort"
 	"strconv"
 	"strings"
-
-	"github.com/fatih/color"
-	"github.com/rogpeppe/go-internal/fmtsort"
+	"time"
 )
 
 const (
@@ -20,28 +19,16 @@ const (
 )
 
 var (
-	defaultPrinter *Printer
-
-	DefaultOut = os.Stdout
-)
-
-func init() {
-	defaultTheme := Theme{
-		Nil:     color.New(color.FgGreen),
-		Float:   color.New(color.FgMagenta),
-		Integer: color.New(color.FgYellow),
-		String:  color.New(color.FgCyan),
-		Bool:    color.New(color.FgRed),
-	}
-
-	defaultPrinter = &Printer{
-		Theme:       defaultTheme,
+	DefaultPrinter = &Printer{
+		Theme:       DefaultTheme,
 		Indent:      defaultIndent,
 		NilString:   defaultNilString,
 		SortMapKey:  ASC,
 		Hexadecimal: true,
 	}
-}
+
+	DefaultOut = os.Stdout
+)
 
 type Mod = int
 
@@ -55,7 +42,7 @@ type HandleUnsupportedType func(reflect.Value) string
 
 // Printer The context for printing
 type Printer struct {
-	Theme
+	*Theme
 	// Indent indent string
 	Indent string
 	// NilString string for nil
@@ -93,12 +80,12 @@ func Format(i interface{}) string {
 
 // PrintTo pretty print the input value (to specified writer)
 func PrintTo(w io.Writer, i interface{}) {
-	defaultPrinter.Print(w, i)
+	DefaultPrinter.Print(w, i)
 }
 
 // PrintlnTo pretty print the input value (to specified writer)
 func PrintlnTo(w io.Writer, i interface{}) {
-	defaultPrinter.Println(w, i)
+	DefaultPrinter.Println(w, i)
 }
 
 // Print pretty print the input value (no newline)
@@ -203,31 +190,36 @@ func (p *Printer) printStruct(w io.Writer, val reflect.Value, level int) {
 		nl := "\n"
 
 		i := val.Interface()
-		if i, ok := i.(fmt.Stringer); ok {
-			WriteString(w, i.String())
+		switch v := i.(type) {
+		case time.Time:
+			p.writeTime(w, v)
+			return
+		case fmt.Stringer:
+			WriteString(w, v.String())
+			return
+		}
+
+		l := val.NumField()
+
+		sOpen := "{"
+
+		if l == 0 {
+			WriteString(w, "{}")
 		} else {
-			l := val.NumField()
-
-			sOpen := "{"
-
-			if l == 0 {
-				WriteString(w, "{}")
-			} else {
-				WriteString(w, sOpen+nl)
-				for i := 0; i < l; i++ {
-					WriteString(w, next)
-					WriteString(w, val.Type().Field(i).Name)
-					WriteString(w, ": ")
-					p.PrintValue(w, val.Field(i), level+1)
-					if i < l-1 {
-						WriteString(w, ","+nl)
-					} else {
-						WriteString(w, nl)
-					}
+			WriteString(w, sOpen+nl)
+			for i := 0; i < l; i++ {
+				WriteString(w, next)
+				WriteString(w, val.Type().Field(i).Name)
+				WriteString(w, ": ")
+				p.PrintValue(w, val.Field(i), level+1)
+				if i < l-1 {
+					WriteString(w, ","+nl)
+				} else {
+					WriteString(w, nl)
 				}
-				WriteString(w, cur)
-				WriteString(w, "}")
 			}
+			WriteString(w, cur)
+			WriteString(w, "}")
 		}
 	} else {
 		WriteString(w, "protected")
@@ -249,7 +241,6 @@ func (p *Printer) PrintValue(w io.Writer, val reflect.Value, level int) {
 	switch val.Kind() {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		p.writeInteger(w, val.Int())
-		_, _ = p.Integer.Fprint(w, strconv.FormatInt(val.Int(), 10))
 
 	case reflect.Uint, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		p.writeUInteger(w, val.Uint())
@@ -293,28 +284,42 @@ func (p *Printer) PrintValue(w io.Writer, val reflect.Value, level int) {
 	}
 }
 
+// GetTheme returns the theme used, or the default theme if not set
+func (p *Printer) GetTheme() *Theme {
+	theme := p.Theme
+	if theme == nil {
+		theme = DefaultTheme
+	}
+	return theme
+}
+
 func (p *Printer) writeNil(w io.Writer) {
-	_, _ = p.Nil.Fprint(w, p.NilString)
+	_, _ = p.GetTheme().Nil.Fprint(w, p.NilString)
 }
 
 func (p *Printer) writeInteger(w io.Writer, val int64) {
-	_, _ = p.Integer.Fprint(w, strconv.FormatInt(val, 10))
+	_, _ = p.GetTheme().Integer.Fprint(w, strconv.FormatInt(val, 10))
 }
 
 func (p *Printer) writeUInteger(w io.Writer, val uint64) {
-	_, _ = p.Integer.Fprint(w, strconv.FormatUint(val, 10))
+	_, _ = p.GetTheme().Integer.Fprint(w, strconv.FormatUint(val, 10))
 }
 
 func (p *Printer) writeFloat(w io.Writer, val float64) {
-	_, _ = p.Float.Fprint(w, strconv.FormatFloat(val, 'f', -1, 64))
+	_, _ = p.GetTheme().Float.Fprint(w, strconv.FormatFloat(val, 'f', -1, 64))
 }
 
 func (p *Printer) writeString(w io.Writer, val string) {
-	_, _ = p.String.Fprint(w, strconv.Quote(val))
+	_, _ = p.GetTheme().String.Fprint(w, strconv.Quote(val))
 }
 
 func (p *Printer) writeBool(w io.Writer, val bool) {
-	_, _ = p.Bool.Fprint(w, strconv.FormatBool(val))
+	_, _ = p.GetTheme().Bool.Fprint(w, strconv.FormatBool(val))
+}
+
+func (p *Printer) writeTime(w io.Writer, val time.Time) {
+	theme := p.GetTheme()
+	_, _ = theme.Time.Fprint(w, val.Format(theme.TimeLayout))
 }
 
 func IsPrimitive(val reflect.Value) bool {
