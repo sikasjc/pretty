@@ -18,6 +18,10 @@ const (
 	defaultNilString = "nil"
 )
 
+func NoColor() {
+	DefaultPrinter.NoColor()
+}
+
 var (
 	DefaultPrinter = &Printer{
 		Theme:       DefaultTheme,

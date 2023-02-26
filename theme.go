@@ -24,3 +24,12 @@ type Theme struct {
 	Time       *color.Color
 	TimeLayout string
 }
+
+func (t *Theme) NoColor() {
+	t.Nil.DisableColor()
+	t.Float.DisableColor()
+	t.Integer.DisableColor()
+	t.String.DisableColor()
+	t.Bool.DisableColor()
+	t.Time.DisableColor()
+}
